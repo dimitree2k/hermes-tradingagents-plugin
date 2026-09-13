@@ -53,6 +53,7 @@ import shutil
 import subprocess
 import time
 import uuid
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, List
 
@@ -89,18 +90,45 @@ def _force_stop_container(container_name: str) -> None:
         logger.warning("failed to stop timed-out container %s: %s", container_name, exc)
 
 
+@lru_cache(maxsize=1)
+def _configured_settings() -> dict[str, Any]:
+    """Read non-secret plugin settings from the active Hermes config."""
+    try:
+        from hermes_constants import get_hermes_home
+        from hermes_cli.config import read_user_config_raw
+
+        raw = read_user_config_raw(get_hermes_home() / "config.yaml") or {}
+        settings = (
+            raw.get("plugins", {})
+            .get("entries", {})
+            .get("tradingagents", {})
+            .get("settings", {})
+        )
+        return settings if isinstance(settings, dict) else {}
+    except Exception:
+        return {}
+
+
+def _setting(name: str, default: str = "") -> str:
+    """Prefer an explicit process environment override over config.yaml."""
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        value = _configured_settings().get(name, default)
+    return str(value).strip()
+
+
 def _tradingagents_dir() -> Path | None:
-    raw = os.environ.get("TRADINGAGENTS_DIR", "").strip()
+    raw = _setting("TRADINGAGENTS_DIR")
     return Path(raw).expanduser() if raw else None
 
 
 def _exec_mode() -> str:
-    mode = os.environ.get("TRADINGAGENTS_EXEC_MODE", "docker").strip().lower()
+    mode = _setting("TRADINGAGENTS_EXEC_MODE", "docker").lower()
     return mode if mode in _VALID_EXEC_MODES else "docker"
 
 
 def _python_bin() -> str:
-    return os.environ.get("TRADINGAGENTS_PYTHON", "python3").strip() or "python3"
+    return _setting("TRADINGAGENTS_PYTHON", "python3") or "python3"
 
 
 def _python_resolvable(python_bin: str) -> bool:
@@ -145,7 +173,7 @@ def diagnose() -> dict[str, Any]:
         if shutil.which("docker") is None:
             info.update(ready=False, detail="The 'docker' binary is not on PATH.")
             return info
-        service = os.environ.get("TRADINGAGENTS_COMPOSE_SERVICE", "tradingagents").strip() or "tradingagents"
+        service = _setting("TRADINGAGENTS_COMPOSE_SERVICE", "tradingagents") or "tradingagents"
         info.update(ready=True, detail="docker + docker-compose.yml + batch script found.", compose_service=service)
         return info
 
@@ -207,7 +235,7 @@ def _parse_tickers(raw: Any) -> List[str]:
         # dashboard yet).
         raw = store.load_watchlist()
         if not raw:
-            watchlist = os.environ.get("TRADINGAGENTS_WATCHLIST", "")
+            watchlist = _setting("TRADINGAGENTS_WATCHLIST")
             raw = [item.strip() for item in watchlist.split(",") if item.strip()]
     elif isinstance(raw, str):
         raw = [item.strip() for item in raw.split(",") if item.strip()]
@@ -276,7 +304,7 @@ def run_batch(
     if invalid:
         raise TradingAgentsRunError(f"Invalid ticker symbol(s): {', '.join(invalid)}")
 
-    timeout_seconds = int(os.environ.get("TRADINGAGENTS_TIMEOUT_SECONDS", _DEFAULT_TIMEOUT_SECONDS))
+    timeout_seconds = int(_setting("TRADINGAGENTS_TIMEOUT_SECONDS", str(_DEFAULT_TIMEOUT_SECONDS)))
     container_name = f"tradingagents-run-{uuid.uuid4().hex[:12]}"
 
     if mode == "docker":
