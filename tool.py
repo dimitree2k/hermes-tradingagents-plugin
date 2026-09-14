@@ -117,6 +117,16 @@ def _setting(name: str, default: str = "") -> str:
     return str(value).strip()
 
 
+def _child_env() -> dict[str, str]:
+    """Pass adapter-only source settings from Hermes config to the child."""
+    env = os.environ.copy()
+    for name in ("TRADINGAGENTS_SOURCE_DIR", "TRADINGAGENTS_SOURCE_PYTHON"):
+        value = _setting(name)
+        if value:
+            env[name] = value
+    return env
+
+
 def _tradingagents_dir() -> Path | None:
     raw = _setting("TRADINGAGENTS_DIR")
     return Path(raw).expanduser() if raw else None
@@ -339,6 +349,7 @@ def run_batch(
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            env=_child_env(),
         )
     except subprocess.TimeoutExpired:
         if mode == "docker":
