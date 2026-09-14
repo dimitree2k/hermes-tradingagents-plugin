@@ -539,6 +539,7 @@ def _persist_and_summarize(payload: dict) -> dict:
             "sentiment_score": result.get("sentiment_score"),
             "price_target": result.get("price_target"),
             "time_horizon": result.get("time_horizon"),
+            "decision_summary": result.get("decision_summary"),
             "error": result.get("error"),
         }
         report_text = result.get("report")
