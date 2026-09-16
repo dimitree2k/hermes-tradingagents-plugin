@@ -678,6 +678,17 @@ TRADINGAGENTS_ANALYZE_SCHEMA = {
                 "type": "string",
                 "description": "Analysis date as YYYY-MM-DD. Defaults to today.",
             },
+            "output_format": {
+                "type": "string",
+                "enum": ["markdown", "json", "brief"],
+                "description": "Requested result format; the Yeoman A2A adapter uses markdown.",
+            },
+            "length": {
+                "type": "string",
+                "enum": ["short", "long", "full"],
+                "default": "short",
+                "description": "Presentation hint; the A2A adapter always returns the stored full report.",
+            },
         },
         "required": [],
     },
